@@ -2,7 +2,8 @@
 
 A log stream pipeline on Kubernetes. A generator pod publishes a mock log stream via Redis Streams; horizontally autoscaling pods index the data into OpenSearch for visualization in OpenSearch Dashboards.
 
-<video src="https://github.com/user-attachments/assets/dc24b21a-51f5-489c-82f4-fae3dfd2c3f5"></video>
+
+<video src="https://github.com/user-attachments/assets/da31d5bc-3cf0-460a-87df-0afe422d07c8"></video>
 
 ## Prerequisites
 

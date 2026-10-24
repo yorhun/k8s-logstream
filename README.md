@@ -35,14 +35,14 @@ make build
 
 ### Configuration
 
-Before deploying, set a password for the local OpenSearch admin account.
+Before deploying, set a strong password for the local OpenSearch admin account.
 Replace `CHANGE_ME` in these three files with the same password value:
 
 | File | Key |
 |------|-----|
-| `k8s/monitoring/opensearch-values.yaml` | `OPENSEARCH_INITIAL_ADMIN_PASSWORD` |
-| `k8s/monitoring/opensearch-dashboards-values.yaml` | `opensearch.password` |
-| `k8s/log-processor/secret.yaml.example` | `OPENSEARCH_URL` (embedded in the URL) -> Rename as `secret.yaml` |
+| [k8s/monitoring/opensearch-values.yaml](k8s/monitoring/opensearch-values.yaml) | `OPENSEARCH_INITIAL_ADMIN_PASSWORD` |
+| [k8s/monitoring/opensearch-dashboards-values.yaml](k8s/monitoring/opensearch-dashboards-values.yaml) | `opensearch.password` |
+| [k8s/log-processor/secret.yaml.example](k8s/log-processor/secret.yaml.example) | `OPENSEARCH_URL` (embedded in the URL) -> **URL-encode special chars and rename file as `secret.yaml`** |
 
 ### Deploy
 
@@ -79,9 +79,9 @@ kubectl get hpa -n logstream -w
 
 ## Importing the Dashboard
 
-Once `http://localhost:5601` is open:
+Load `http://localhost:5601` and import the dashboard
 
-   **Import saved objects** — Stack Management → Saved Objects → Import  
+   Dashboard management → Saved Objects → Import
    File: `k8s/monitoring/dashboards/logstream-opensearch.ndjson`  
    Choose *Automatically overwrite conflicts* if re-importing.
 
@@ -97,8 +97,20 @@ The **Logstream** dashboard then appears under Dashboards with these panels:
 | Active Processor Pod Count | Number of Pods (Autoscaling Processor Pods) |
 | Processed Messages | Count of processed messages |
 
+## Delivery and Recovery
+
+Successful OpenSearch writes are acknowledged in Redis. Failures stay pending, are reclaimed after five idle seconds, and are retried up to five times before being moved with error details to `logs:dead`.
+
+Redis stream IDs are used as OpenSearch document IDs, so retrying an entry overwrites the same document. Separate entries with the same `log_id` remain distinct documents; later ones are marked as duplicates.
+
+Deduplication state and acknowledged source entries are kept for seven days; pending entries are retained. `logs:dead` has no automatic expiry, so review or export entries before trimming it to about 10,000:
+
+```bash
+kubectl exec -n logstream redis-master-0 -- redis-cli XTRIM logs:dead MAXLEN '~' 10000
+```
+
+Redis and OpenSearch persistence are disabled locally, so pod deletion or restart can lose data. This setup is for a demo, not for production use.
+
 ## Improvement Ideas
 
-- Add TTL to processed logs set
 - Use event-driven autoscaling instead of CPU-based
-- Add a dead-letter queue for messages that fail to index

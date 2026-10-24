@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: log-processor
-          image: log-processor:latest
+          image: log-processor:0.1.0
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:

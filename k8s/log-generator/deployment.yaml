@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: log-generator
-          image: log-generator:latest
+          image: log-generator:0.1.0
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:

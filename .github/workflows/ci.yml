@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-validate:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      opensearch:
+        image: opensearchproject/opensearch:2.19.2
+        env:
+          discovery.type: single-node
+          DISABLE_SECURITY_PLUGIN: "true"
+          OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9200 >/dev/null"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.2"
+          cache: pip
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --require-hashes -r services/log-processor/requirements.lock
+          python -m pip install --require-hashes -r services/log-generator/requirements.lock
+          python -m pip install --require-hashes -r requirements-dev.lock
+      - name: Run tests
+        env:
+          TEST_REDIS_URL: redis://localhost:6379/15
+          TEST_OPENSEARCH_URL: http://localhost:9200
+        run: python -m pytest -q
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar -xz kubeconform
+          sudo install kubeconform /usr/local/bin/kubeconform
+      - name: Validate Kubernetes manifests
+        run: kubeconform -strict -summary k8s/namespace.yaml k8s/log-generator/*.yaml k8s/log-processor/*.yaml
+      - name: Validate pinned Helm charts
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add opensearch https://opensearch-project.github.io/helm-charts/
+          helm repo update
+          mkdir -p /tmp/charts
+          helm pull bitnami/redis --version 28.3.1 --untar --untardir /tmp/charts
+          helm pull opensearch/opensearch --version 3.9.0 --untar --untardir /tmp/charts
+          helm pull opensearch/opensearch-dashboards --version 3.9.0 --untar --untardir /tmp/charts
+          helm lint /tmp/charts/redis -f k8s/redis/values.yaml
+          helm template redis /tmp/charts/redis -n logstream -f k8s/redis/values.yaml | kubeconform -strict -summary -
+          helm lint /tmp/charts/opensearch -f k8s/monitoring/opensearch-values.yaml
+          helm template opensearch /tmp/charts/opensearch -n logstream -f k8s/monitoring/opensearch-values.yaml | kubeconform -strict -summary -
+          helm lint /tmp/charts/opensearch-dashboards -f k8s/monitoring/opensearch-dashboards-values.yaml
+          helm template opensearch-dashboards /tmp/charts/opensearch-dashboards -n logstream -f k8s/monitoring/opensearch-dashboards-values.yaml | kubeconform -strict -summary -
+      - name: Build service images
+        run: |
+          docker build -t log-generator:0.1.0 services/log-generator/
+          docker build -t log-processor:0.1.0 services/log-processor/

@@ -6,3 +6,8 @@ metadata:
 data:
   REDIS_URL: "redis://redis-master.logstream.svc:6379"
   STREAM_NAME: "logs:raw"
+  DEDUP_TTL_SECONDS: "604800"
+  MAX_RETRIES: "5"
+  PENDING_IDLE_MS: "5000"
+  DLQ_STREAM_NAME: "logs:dead"
+  STREAM_RETENTION_SECONDS: "604800"

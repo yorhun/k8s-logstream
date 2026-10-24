@@ -1,6 +1,9 @@
 NAMESPACE := logstream # immediate/simple assignment
+REDIS_CHART_VERSION := 28.3.1
+OPENSEARCH_CHART_VERSION := 3.9.0
+IMAGE_TAG := 0.1.0
 
-.PHONY: helm-repos deploy-infra build deploy-services deploy-monitoring port-forward teardown
+.PHONY: helm-repos deploy-infra build deploy-services deploy-monitoring port-forward teardown test test-integration validate-manifests
 
 ## Add Bitnami and opensearch Helm repos then update
 helm-repos:
@@ -12,12 +15,12 @@ helm-repos:
 deploy-infra:
 	kubectl apply -f k8s/namespace.yaml
 	helm upgrade --install redis bitnami/redis \
-		-n $(NAMESPACE) -f k8s/redis/values.yaml
+		-n $(NAMESPACE) --version $(REDIS_CHART_VERSION) -f k8s/redis/values.yaml
 
 ## Build Docker images locally (OrbStack shares daemon — no push needed)
 build:
-	docker build -t log-generator:latest services/log-generator/
-	docker build -t log-processor:latest services/log-processor/
+	docker build -t log-generator:$(IMAGE_TAG) services/log-generator/
+	docker build -t log-processor:$(IMAGE_TAG) services/log-processor/
 
 ## Apply namespace + generator/processor K8s manifests
 deploy-services:
@@ -28,9 +31,21 @@ deploy-services:
 ## Deploy OpenSearch and OpenSearch Dashboards via Helm
 deploy-monitoring:
 	helm upgrade --install opensearch opensearch/opensearch \
-		-n $(NAMESPACE) -f k8s/monitoring/opensearch-values.yaml
+		-n $(NAMESPACE) --version $(OPENSEARCH_CHART_VERSION) -f k8s/monitoring/opensearch-values.yaml
 	helm upgrade --install opensearch-dashboards opensearch/opensearch-dashboards \
-		-n $(NAMESPACE) -f k8s/monitoring/opensearch-dashboards-values.yaml
+		-n $(NAMESPACE) --version $(OPENSEARCH_CHART_VERSION) -f k8s/monitoring/opensearch-dashboards-values.yaml
+
+## Run unit tests (external services not required)
+test:
+	python -m pytest -m unit -q
+
+## Run Redis/OpenSearch integration tests (services must be running)
+test-integration:
+	python -m pytest -m integration -q
+
+## Validate raw Kubernetes manifests
+validate-manifests:
+	kubeconform -strict -summary k8s/namespace.yaml k8s/log-generator/*.yaml k8s/log-processor/*.yaml
 
 ## Port-forward OpenSearch Dashboards to localhost:5601
 port-forward:

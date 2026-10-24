@@ -1,1 +1,1 @@
-redis
+redis==8.1.0
